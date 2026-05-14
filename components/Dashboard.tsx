@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useClientApiKey } from "@/lib/clientKey";
 import type {
   ComplianceStatus,
   ErpRecord,
@@ -79,9 +78,6 @@ export function Dashboard({ instanceName }: DashboardProps) {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
 
-  const { apiKey, isLoaded: apiKeyLoaded, setApiKey, clearApiKey } =
-    useClientApiKey();
-
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [complianceFilter, setComplianceFilter] =
     useState<ComplianceFilter>("ALL");
@@ -92,7 +88,6 @@ export function Dashboard({ instanceName }: DashboardProps) {
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchRecords = useCallback(async () => {
-    if (!apiKey) return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -100,7 +95,6 @@ export function Dashboard({ instanceName }: DashboardProps) {
       const res = await fetch("/api/records", {
         cache: "no-store",
         signal: controller.signal,
-        headers: { "x-api-key": apiKey },
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as
@@ -120,23 +114,20 @@ export function Dashboard({ instanceName }: DashboardProps) {
         err instanceof Error ? err.message : "Failed to load records",
       );
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => {
-    const tickId = setInterval(() => setNow(new Date()), 1000);
-    if (!apiKey) {
-      return () => clearInterval(tickId);
-    }
     void fetchRecords();
     const pollId = setInterval(() => {
       void fetchRecords();
     }, POLL_INTERVAL_MS);
+    const tickId = setInterval(() => setNow(new Date()), 1000);
     return () => {
       clearInterval(pollId);
       clearInterval(tickId);
       abortRef.current?.abort();
     };
-  }, [fetchRecords, apiKey]);
+  }, [fetchRecords]);
 
   useEffect(() => {
     if (!toast) return;
@@ -234,18 +225,10 @@ export function Dashboard({ instanceName }: DashboardProps) {
     }) => {
       setActionBusy(true);
       setActionError(null);
-      if (!apiKey) {
-        setActionError("Configure an API key in the 🔑 panel first.");
-        setActionBusy(false);
-        return;
-      }
       try {
         const res = await fetch(params.url, {
           method: params.method,
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(params.body),
         });
         const body = (await res.json().catch(() => null)) as
@@ -294,7 +277,7 @@ export function Dashboard({ instanceName }: DashboardProps) {
         setActionBusy(false);
       }
     },
-    [appendActivity, fetchRecords, apiKey],
+    [appendActivity, fetchRecords],
   );
 
   const handleStatusSubmit = useCallback(
@@ -482,25 +465,7 @@ export function Dashboard({ instanceName }: DashboardProps) {
           />
         </section>
 
-        {apiKeyLoaded && !apiKey ? (
-          <div className="mt-4 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2">
-            <p className="text-xs font-semibold text-amber-900">
-              🔑 Configure an API key for this dashboard.
-            </p>
-            <p className="mt-0.5 text-[11px] text-amber-800">
-              Open the <button
-                type="button"
-                onClick={() => setApiKeysOpen(true)}
-                className="underline decoration-amber-700/60 underline-offset-2 hover:text-amber-900"
-              >
-                API Keys
-              </button> panel to generate one — or paste an existing key — and
-              save it as the active client key.
-            </p>
-          </div>
-        ) : null}
-
-        {apiKey && loadError ? (
+        {loadError ? (
           <div className="mt-4 rounded-sm border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800">
             Failed to load records: {loadError}
           </div>
@@ -525,11 +490,7 @@ export function Dashboard({ instanceName }: DashboardProps) {
         </section>
 
         <section className="mt-3">
-          {!apiKey ? (
-            <div className="rounded-sm border border-slate-200 bg-white px-3 py-10 text-center text-xs text-slate-500">
-              Waiting for an API key — open the 🔑 panel to configure one.
-            </div>
-          ) : records === null && !loadError ? (
+          {records === null && !loadError ? (
             <div className="rounded-sm border border-slate-200 bg-white px-3 py-10 text-center text-xs text-slate-500">
               Loading records…
             </div>
@@ -610,9 +571,6 @@ export function Dashboard({ instanceName }: DashboardProps) {
       <ApiKeyManager
         open={apiKeysOpen}
         onClose={() => setApiKeysOpen(false)}
-        currentKey={apiKey}
-        onKeySet={setApiKey}
-        onKeyCleared={clearApiKey}
       />
     </div>
   );
