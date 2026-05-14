@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api-helpers";
+import { authenticate } from "@/lib/authenticate";
+import {
+  CORS_HEADERS,
+  errorResponse,
+  optionsResponse,
+} from "@/lib/api-helpers";
 import {
   StoreError,
   nonCompliantCount,
@@ -10,7 +15,9 @@ import type { StatusResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = await authenticate(request);
+  if (authError) return authError;
   try {
     const [count, nonCompliant, overdue] = await Promise.all([
       recordCount(),
@@ -26,7 +33,7 @@ export async function GET() {
       health: nonCompliant > 0 || overdue > 0 ? "degraded" : "ok",
       timestamp: new Date().toISOString(),
     };
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers: CORS_HEADERS });
   } catch (e) {
     if (e instanceof StoreError) {
       return errorResponse(500, e.message || "Status check failed");
@@ -37,3 +44,5 @@ export async function GET() {
     );
   }
 }
+
+export const OPTIONS = optionsResponse;
